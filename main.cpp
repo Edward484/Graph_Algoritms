@@ -9,6 +9,7 @@
 
 using namespace std;
 int numberNodes;
+
 void Print_graph( map<int,vector<int>> graph_list){
     for(auto it = graph_list.begin(); it != graph_list.end(); it++){
         cout << it->first << " => " ;
@@ -91,6 +92,19 @@ map<int,vector<int>> insertNode(map<int,vector<int>> graph_list, int s_node, int
     }
     return graph_list;
 }
+
+map<int,vector<pair<int,int>>> insertNodeCost(map<int,vector<pair<int,int>>> graph_list, int s_node, int e_node, int e_cost){
+    if(graph_list.count(s_node) == 0) {
+        vector<pair<int,int>> temp;
+        temp.push_back(make_pair(e_node,e_cost));
+        graph_list.insert(pair<int, vector<pair<int,int>>>(s_node,temp));
+    }
+    else {
+        auto it = graph_list.find(s_node);
+        it->second.push_back(make_pair(e_node, e_cost));
+    }
+    return graph_list;
+};
 
 map<int,vector<int>> Read_graph_unordered(string file_name){
     map<int,vector<int>> graph_list;
@@ -232,7 +246,10 @@ void CycleDFS(int i,map<int,vector<int>> graph){
     CycleDfsRec(i,graph,fathers,visits);
 }
 
+//works by starting from 0 edges, after sorting nodes by price,
+// it adds them to the tree only if the 2 nodes of the edge don't belong to the same connected component
 map<int,vector<pair<int,int>>> Kruskal(map<int,vector<pair<int,int>>> graph ){
+    map<int,vector<pair<int,int>>> res;
     //sort
     vector<tuple<int,int,int>> sortedEdges;  //first vertice, second vertice, cost between them
     for(auto it = graph.begin(); it != graph.end(); it++){
@@ -248,11 +265,79 @@ map<int,vector<pair<int,int>>> Kruskal(map<int,vector<pair<int,int>>> graph ){
              return get<2>(t1) < get<2>(t2); // lambda expression
          });
 
-    for(auto it = sortedEdges.begin(); it != sortedEdges.end();it++){
-        cout << get<0>(*it)<<" " << get<1>(*it)<< " " << get<2>(*it);
-        cout << endl;
+    vector<int> conexComp(numberNodes+1);
+    int c = 0;
+    for(auto node: conexComp){
+        conexComp[c] = c;
+        c++;
     }
-    return graph;
+
+    int nrMuchiiSel = 0;     //no of edges selected
+    for(int i = 0 ; nrMuchiiSel < numberNodes -1;i++) {
+        if (conexComp[get<0>(sortedEdges[i])] != conexComp[get<1>(sortedEdges[i])]) {           //it doesn't form cycles by being in the same connected component
+            nrMuchiiSel++;
+
+            res = insertNodeCost(res,get<0>(sortedEdges[i]),get<1>(sortedEdges[i]),get<2>(sortedEdges[i]));       //add node to new graph
+            res = insertNodeCost(res,get<1>(sortedEdges[i]),get<0>(sortedEdges[i]),get<2>(sortedEdges[i]));
+
+            //unify the connected components
+            int min, max;
+            if(conexComp[get<0>(sortedEdges[i])] < conexComp[get<1>(sortedEdges[i])]){
+                min = conexComp[get<0>(sortedEdges[i])];
+                max = conexComp[get<1>(sortedEdges[i])];
+            }
+            else{
+                min = conexComp[get<1>(sortedEdges[i])];
+                max = conexComp[get<0>(sortedEdges[i])];
+            }
+                           //keep the connected comp number as the lowest one.
+            for(auto it = conexComp.begin(); it!= conexComp.end();it++){
+                if(*it == max)
+                    *it = min;
+            }
+        }
+    }
+
+    return res;
+}
+
+map<int,vector<pair<int,int>>> PrimLazy(map<int,vector<pair<int,int>>> graph ){
+    struct Comparator {
+            bool operator()(tuple<int, int, int>& t1, tuple<int, int, int>& t2) {
+                return get<0>(t1) > get<0>(t2);
+            }
+    };
+
+    priority_queue<tuple<int,int,int>, vector<tuple<int,int,int>>, Comparator> pq;
+    map<int,vector<pair<int,int>>> res,emptyv;
+    vector<bool> visited(numberNodes+1, false);
+    int selectedEdgeCount = 0;
+    int minCost = 0;
+
+    for(auto nei : graph[0]){
+        pq.push(make_tuple(nei.second, 0, nei.first));
+    }
+    visited[0] = true;
+
+    while(!pq.empty() && selectedEdgeCount < numberNodes ){
+        auto edge = pq.top();
+        pq.pop();
+        if(visited[get<2>(edge)])   continue;
+        selectedEdgeCount++;
+        minCost += get<0>(edge);
+        res = insertNodeCost(res,get<1>(edge),get<2>(edge),get<0>(edge));
+        res = insertNodeCost(res,get<2>(edge),get<1>(edge),get<0>(edge));
+
+        for(const auto& nei : graph[get<2>(edge)]){
+            pq.push(make_tuple(nei.second, get<2>(edge), nei.first));             //cost, origin, destination
+        }
+        visited[get<2>(edge)] = true;
+    }
+    if(selectedEdgeCount != numberNodes -1)
+        return emptyv;
+    Print_graph_cost(res);
+    cout <<"The cost of the MSP is: " <<minCost;
+    return res;
 }
 
 vector<int> DFS(int node, map<int,vector<int>> &graph, vector<int>&order, vector<int>&vis ){
@@ -286,7 +371,7 @@ void DFS_cost(int node, map<int,vector<pair<int,int>>> &graph, vector<int>&order
     order.push_back(node);
 }
 
-void printConexComponents(map<int,vector<int>> graph){
+void printConnexComponents(map<int,vector<int>> graph){
     vector<int> visited(numberNodes+1,0);
     vector<int> order;
     int nrComp = 0;
@@ -348,7 +433,6 @@ vector<int> dagShortestPath(map<int,vector<pair<int,int>>> graph, int start){
             distanceArray[neighbour.first] = min(newDistance, distanceArray[neighbour.first]);
         }
     }
-
      return distanceArray;
 }
 
@@ -535,7 +619,7 @@ vector<pair<int,int>> findBridges(map<int,vector<int>> graph){
     return bridges;
 }
 
-void dfsBridges(int root,int node, int parent,int &outEdgeCount, map<int,vector<int>> &graph,
+void dfsArt(int root,int node, int parent,int &outEdgeCount, map<int,vector<int>> &graph,
                 set<int>&vis, vector<bool> &artPts, vector<int> &lowLinks, vector<int> &ids, int &id ){
     vis.insert(node);
     id++;
@@ -545,7 +629,7 @@ void dfsBridges(int root,int node, int parent,int &outEdgeCount, map<int,vector<
     for(auto nei: graph[node]){
         if(nei == parent) continue;
         if(vis.count(nei) == 0 ){
-            dfsBridges(root,nei, node,outEdgeCount, graph, vis,artPts, lowLinks,ids,id);
+            dfsArt(root,nei, node,outEdgeCount, graph, vis,artPts, lowLinks,ids,id);
             lowLinks[node] = min(lowLinks[node], lowLinks[nei]);
             if(ids[node] < lowLinks[nei]){
                 artPts[node] = true;
@@ -570,7 +654,7 @@ vector<bool> findArticulationPoints(map<int,vector<int>> graph){
     for(int i = 0; i < numberNodes; i++){
         if(visited.count(i) == 0){
             outEdgeCount = 0;
-            dfsBridges(i,i,-1,outEdgeCount, graph,visited,artPts,lowLinks, ids,id);
+            dfsArt(i,i,-1,outEdgeCount, graph,visited,artPts,lowLinks, ids,id);
             artPts[i] = (outEdgeCount > 1);
         }
     }
@@ -626,8 +710,9 @@ vector<int> Tarjan(map<int,vector<int>> graph){
     return lowLinks;
 }
 
+
 int main() {
-    map<int,vector<int>> graph = Read_graph("graf.in");
-    Print_graph(graph);
-    Tarjan(graph);
+    map<int,vector<pair<int,int>>> graph = Read_graph_unordered_cost("graf.in");
+    Print_graph_cost(graph);
+    PrimLazy(graph);
 }
